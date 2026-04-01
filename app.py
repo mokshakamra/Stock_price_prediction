@@ -57,6 +57,9 @@ if df.empty:
     st.error("Data not loaded")
     st.stop()
 
+# Ensure Close column is numeric
+df['Close'] = df['Close'].astype(float)
+
 # ---------- GRAPH ----------
 st.subheader(f"{stock} Price History")
 st.line_chart(df['Close'])
@@ -75,28 +78,35 @@ if len(data) < 20:
     st.warning("Not enough data")
     st.stop()
 
-X = data[['Close']].values.reshape(-1, 1)
+# Features & labels
+X = data[['Close']].values   # already 2D
 y = data['Prediction'].values
 
+# Train model
 model = LinearRegression()
 model.fit(X, y)
 
 # ---------- PREDICTION ----------
-
 if predict_btn:
     try:
+        # ✅ FIX 1: ensure scalar float
         last_price = float(df['Close'].iloc[-1])
 
         future_prices = []
         current_price = last_price
 
         for i in range(int(days)):
-            pred = model.predict(np.array([[current_price]]))[0]
-            future_prices.append(float(pred))
-            current_price = pred
+            # ✅ FIX 2: correct 2D input
+            pred = model.predict(np.array([[current_price]]))
+            
+            # ✅ FIX 3: extract scalar properly
+            pred_value = float(pred[0])
 
-        # ✅ FIXED LINE
-        history = list(df['Close'])
+            future_prices.append(pred_value)
+            current_price = pred_value
+
+        # Combine history + prediction
+        history = df['Close'].tolist()   # safer than list()
         full_data = history + future_prices
 
         st.subheader("Prediction Graph")
