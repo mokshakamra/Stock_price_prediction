@@ -6,29 +6,8 @@ from sklearn.linear_model import LinearRegression
 # ---------- PAGE ----------
 st.set_page_config(page_title="Stock Predictor")
 
-# ---------- STYLE ----------
-st.markdown("""
-<style>
-.stApp {
-    background: linear-gradient(135deg, #0f172a, #1e3a8a);
-    color: white;
-}
-h1 {
-    text-align: center;
-    color: white;
-}
-.stButton > button {
-    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
-    color: white;
-    border-radius: 8px;
-    width: 100%;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ---------- TITLE ----------
-st.markdown("<h1>📈 Stock Price Predictor</h1>", unsafe_allow_html=True)
-st.markdown("---")
+st.title("📈 Stock Price Predictor")
 
 # ---------- STOCK LIST ----------
 stocks = [
@@ -38,26 +17,26 @@ stocks = [
 ]
 
 # ---------- INPUT ----------
-col1, col2, col3 = st.columns(3)
+stock = st.selectbox("Select Stock", stocks)
+days = st.number_input("Days to Predict", min_value=1, max_value=30, value=7)
+predict_btn = st.button("Predict")
 
-with col1:
-    stock = st.selectbox("Stock", stocks)
+# ---------- DATA LOADING (FIXED) ----------
+@st.cache_data
+def load_data(stock):
+    try:
+        df = yf.Ticker(stock).history(period="5y")   # more reliable
+        return df
+    except:
+        return None
 
-with col2:
-    days = st.number_input("Days", min_value=1, max_value=30, value=7)
+df = load_data(stock)
 
-with col3:
-    st.write("")
-    predict_btn = st.button("Predict")
-
-# ---------- DATA ----------
-df = yf.download(stock, start="2020-01-01")
-
-if df.empty:
-    st.error("Data not loaded")
+if df is None or df.empty:
+    st.error("❌ Data not loaded. Check internet or try another stock.")
     st.stop()
 
-# Ensure Close column is numeric
+# Ensure numeric
 df['Close'] = df['Close'].astype(float)
 
 # ---------- GRAPH ----------
@@ -67,19 +46,17 @@ st.line_chart(df['Close'])
 # ---------- ML ----------
 data = df[['Close']].copy()
 
-# shift based on days
+# Create future prediction column
 data['Prediction'] = data['Close'].shift(-int(days))
 
-# remove NaN
+# Remove NaN
 data.dropna(inplace=True)
 
-# safety check
 if len(data) < 20:
     st.warning("Not enough data")
     st.stop()
 
-# Features & labels
-X = data[['Close']].values   # already 2D
+X = data[['Close']].values
 y = data['Prediction'].values
 
 # Train model
@@ -89,24 +66,20 @@ model.fit(X, y)
 # ---------- PREDICTION ----------
 if predict_btn:
     try:
-        # ✅ FIX 1: ensure scalar float
         last_price = float(df['Close'].iloc[-1])
 
         future_prices = []
         current_price = last_price
 
-        for i in range(int(days)):
-            # ✅ FIX 2: correct 2D input
+        for _ in range(int(days)):
             pred = model.predict(np.array([[current_price]]))
-            
-            # ✅ FIX 3: extract scalar properly
-            pred_value = float(pred[0])
+            pred_value = float(pred[0])   # FIXED
 
             future_prices.append(pred_value)
             current_price = pred_value
 
         # Combine history + prediction
-        history = df['Close'].tolist()   # safer than list()
+        history = df['Close'].tolist()
         full_data = history + future_prices
 
         st.subheader("Prediction Graph")
