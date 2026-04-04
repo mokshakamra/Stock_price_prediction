@@ -1,13 +1,12 @@
 import streamlit as st
 import yfinance as yf
 import numpy as np
+import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-# ---------- PAGE ----------
-st.set_page_config(page_title="Stock Predictor")
+st.set_page_config(page_title="Stock Predictor", layout="wide")
 
-# ---------- TITLE ----------
-st.title("📈 Stock Price Predictor")
+st.title("📈 Real-Time Stock Price Predictor")
 
 # ---------- STOCK LIST ----------
 stocks = [
@@ -16,76 +15,77 @@ stocks = [
     "TCS.NS","RELIANCE.NS","INFY.NS","HDFCBANK.NS"
 ]
 
-# ---------- INPUT ----------
-stock = st.selectbox("Select Stock", stocks)
-days = st.number_input("Days to Predict", min_value=1, max_value=30, value=7)
-predict_btn = st.button("Predict")
+col1, col2 = st.columns(2)
 
-# ---------- DATA LOADING (FIXED) ----------
-@st.cache_data
-def load_data(stock):
-    try:
-        df = yf.Ticker(stock).history(period="5y")   # more reliable
-        return df
-    except:
-        return None
+with col1:
+    stock = st.selectbox("Select Stock", stocks)
 
-df = load_data(stock)
+with col2:
+    days = st.slider("Days to Predict", 1, 30, 7)
 
-if df is None or df.empty:
-    st.error("❌ Data not loaded. Check internet or try another stock.")
+# ---------- LOAD DATA ----------
+df = yf.download(stock, period="1y")
+
+if df.empty:
+    st.error("⚠️ Data not available")
     st.stop()
 
-# Ensure numeric
-df['Close'] = df['Close'].astype(float)
+# ---------- CLEAN CLOSE DATA ----------
+close_data = df['Close']
+
+if isinstance(close_data, pd.DataFrame):
+    close_data = close_data.iloc[:, 0]
+
+close_data = close_data.dropna()
+
+if len(close_data) < 20:
+    st.error("Not enough data")
+    st.stop()
+
+# ---------- CURRENT PRICE ----------
+current_price = float(close_data.iloc[-1])
+st.metric("Current Price", f"{current_price:.2f}")
 
 # ---------- GRAPH ----------
-st.subheader(f"{stock} Price History")
-st.line_chart(df['Close'])
+st.subheader("📊 Price History")
+st.line_chart(close_data)
 
-# ---------- ML ----------
-data = df[['Close']].copy()
+# ---------- FEATURE ENGINEERING ----------
+window = 10
 
-# Create future prediction column
-data['Prediction'] = data['Close'].shift(-int(days))
+X = []
+y = []
 
-# Remove NaN
-data.dropna(inplace=True)
+for i in range(window, len(close_data)):
+    X.append(close_data.iloc[i-window:i].values)
+    y.append(close_data.iloc[i])
 
-if len(data) < 20:
-    st.warning("Not enough data")
-    st.stop()
+X = np.array(X)
+y = np.array(y)
 
-X = data[['Close']].values
-y = data['Prediction'].values
-
-# Train model
+# ---------- MODEL ----------
 model = LinearRegression()
 model.fit(X, y)
 
 # ---------- PREDICTION ----------
-if predict_btn:
-    try:
-        last_price = float(df['Close'].iloc[-1])
+if st.button("🔮 Predict Future Price"):
 
-        future_prices = []
-        current_price = last_price
+    last_window = close_data.iloc[-window:].values
+    future = []
 
-        for _ in range(int(days)):
-            pred = model.predict(np.array([[current_price]]))
-            pred_value = float(pred[0])   # FIXED
+    for i in range(days):
+        pred = model.predict([last_window])[0]
+        future.append(pred)
 
-            future_prices.append(pred_value)
-            current_price = pred_value
+        # update window
+        last_window = np.append(last_window[1:], pred)
 
-        # Combine history + prediction
-        history = df['Close'].tolist()
-        full_data = history + future_prices
+    # ---------- GRAPH ----------
+    st.subheader("📉 Prediction Graph")
 
-        st.subheader("Prediction Graph")
-        st.line_chart(full_data)
+    history = list(close_data.tail(100))
+    full = history + future
 
-        st.success(f"📊 Predicted Price after {days} days: {future_prices[-1]:.2f}")
+    st.line_chart(full)
 
-    except Exception as e:
-        st.error(f"Prediction Error: {e}")
+    st.success(f"📊 Predicted Price after {days} days: {future[-1]:.2f}")
