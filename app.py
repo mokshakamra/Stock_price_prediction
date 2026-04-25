@@ -2,11 +2,15 @@ import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
+import time
 from sklearn.linear_model import LinearRegression
 
+# ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Stock Predictor", layout="wide")
-
 st.title("📈 Real-Time Stock Price Predictor")
+
+# ---------- SIDEBAR SETTINGS ----------
+refresh_interval = st.sidebar.slider("Refresh Interval (seconds)", 5, 60, 10)
 
 # ---------- STOCK LIST ----------
 stocks = [
@@ -23,69 +27,71 @@ with col1:
 with col2:
     days = st.slider("Days to Predict", 1, 30, 7)
 
-# ---------- LOAD DATA ----------
-df = yf.download(stock, period="1y")
+# ---------- PLACEHOLDER FOR LIVE UPDATE ----------
+placeholder = st.empty()
 
-if df.empty:
-    st.error("⚠️ Data not available")
-    st.stop()
+while True:
+    with placeholder.container():
 
-# ---------- CLEAN CLOSE DATA ----------
-close_data = df['Close']
+        # ---------- LOAD LIVE DATA ----------
+        df = yf.download(stock, period="1d", interval="1m")
 
-if isinstance(close_data, pd.DataFrame):
-    close_data = close_data.iloc[:, 0]
+        if df.empty:
+            st.error("⚠️ Data not available")
+            break
 
-close_data = close_data.dropna()
+        close_data = df['Close'].dropna()
 
-if len(close_data) < 20:
-    st.error("Not enough data")
-    st.stop()
+        if len(close_data) < 20:
+            st.error("Not enough data")
+            break
 
-# ---------- CURRENT PRICE ----------
-current_price = float(close_data.iloc[-1])
-st.metric("Current Price", f"{current_price:.2f}")
+        # ---------- CURRENT PRICE ----------
+        current_price = float(close_data.iloc[-1])
+        st.metric("Current Price", f"{current_price:.2f}")
 
-# ---------- GRAPH ----------
-st.subheader("📊 Price History")
-st.line_chart(close_data)
+        st.caption("🔄 Auto-refreshing live data")
 
-# ---------- FEATURE ENGINEERING ----------
-window = 10
+        # ---------- LIVE GRAPH ----------
+        st.subheader("📊 Live Price Chart")
+        st.line_chart(close_data)
 
-X = []
-y = []
+        # ---------- FEATURE ENGINEERING ----------
+        window = 10
+        X = []
+        y = []
 
-for i in range(window, len(close_data)):
-    X.append(close_data.iloc[i-window:i].values)
-    y.append(close_data.iloc[i])
+        for i in range(window, len(close_data)):
+            X.append(close_data.iloc[i-window:i].values)
+            y.append(close_data.iloc[i])
 
-X = np.array(X)
-y = np.array(y)
+        X = np.array(X)
+        y = np.array(y)
 
-# ---------- MODEL ----------
-model = LinearRegression()
-model.fit(X, y)
+        # ---------- MODEL ----------
+        model = LinearRegression()
+        model.fit(X, y)
 
-# ---------- PREDICTION ----------
-if st.button("🔮 Predict Future Price"):
+        # ---------- PREDICTION ----------
+        if st.button("🔮 Predict Future Price"):
 
-    last_window = close_data.iloc[-window:].values
-    future = []
+            last_window = close_data.iloc[-window:].values
+            future = []
 
-    for i in range(days):
-        pred = model.predict([last_window])[0]
-        future.append(pred)
+            for i in range(days):
+                pred = model.predict([last_window])[0]
+                future.append(pred)
+                last_window = np.append(last_window[1:], pred)
 
-        # update window
-        last_window = np.append(last_window[1:], pred)
+            st.subheader("📉 Prediction Graph")
 
-    # ---------- GRAPH ----------
-    st.subheader("📉 Prediction Graph")
+            history = list(close_data.tail(100))
+            full = history + future
 
-    history = list(close_data.tail(100))
-    full = history + future
+            st.line_chart(full)
 
-    st.line_chart(full)
+            st.success(f"📊 Predicted Price after {days} days: {future[-1]:.2f}")
 
-    st.success(f"📊 Predicted Price after {days} days: {future[-1]:.2f}")
+    # ---------- AUTO REFRESH ----------
+    time.sleep(refresh_interval)
+    st.rerun()
