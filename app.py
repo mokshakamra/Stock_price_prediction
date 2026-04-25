@@ -47,7 +47,7 @@ while True:
             break
 
         # ---------- CURRENT PRICE ----------
-        current_price = float(close_data.iloc[-1])
+       current_price = float(close_data.iloc[-1].item()) if hasattr(close_data.iloc[-1], "item") else float(close_data.iloc[-1])
         st.metric("Current Price", f"{current_price:.2f}")
 
         st.caption("🔄 Auto-refreshing live data")
