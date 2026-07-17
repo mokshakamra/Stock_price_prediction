@@ -37,3 +37,4 @@ Graph of stock trends Predicted vs actual prices Future price forecasting
 🎯 Future Improvements
 
 Add real-time data using APIs Deploy as web app (Streamlit/Flask) Improve accuracy with hybrid models Add multiple stock support
+By -MK
